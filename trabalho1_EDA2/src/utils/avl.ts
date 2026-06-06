@@ -35,6 +35,13 @@ export type AvlLayoutEdge = {
   to: number
 }
 
+export type AvlLayout = {
+  nodes: AvlLayoutNode[]
+  edges: AvlLayoutEdge[]
+  width: number
+  height: number
+}
+
 export const AVL_PRESETS: AvlPreset[] = [
   {
     id: 'll',

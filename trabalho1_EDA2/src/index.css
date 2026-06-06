@@ -19,3 +19,61 @@ body {
     radial-gradient(circle at 100% 100%, #fef3c7 0, transparent 42%),
     #f8fafc;
 }
+
+/* --- Animacoes da AVL --- */
+
+/* Surgimento do no recem-inserido: cresce a partir do centro com um leve overshoot. */
+@keyframes avlNodeEnter {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.avl-node-enter {
+  animation: avlNodeEnter 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Anel pulsante que marca o pivo onde a rotacao aconteceu. */
+@keyframes avlPivotPulse {
+  0% {
+    r: 26;
+    opacity: 0.7;
+  }
+  100% {
+    r: 44;
+    opacity: 0;
+  }
+}
+
+.avl-pivot-ring {
+  animation: avlPivotPulse 1100ms ease-out infinite;
+}
+
+/* Entrada do aviso de rotacao sobre a arvore. */
+@keyframes avlBadgeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.avl-rotation-badge {
+  animation: avlBadgeIn 260ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .avl-node-enter,
+  .avl-pivot-ring,
+  .avl-rotation-badge {
+    animation: none;
+  }
+}

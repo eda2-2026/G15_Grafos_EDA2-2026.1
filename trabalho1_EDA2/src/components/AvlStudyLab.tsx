@@ -10,6 +10,7 @@ import {
   type AvlNode,
   type RotationType,
 } from '../utils/avl'
+import { useAnimatedAvlLayout } from '../utils/useAnimatedAvlLayout'
 
 type OperationLogEntry = {
   id: number
@@ -24,6 +25,14 @@ const rotationTone: Record<RotationType, string> = {
   RR: 'bg-sky-100 text-sky-700',
   LR: 'bg-amber-100 text-amber-700',
   RL: 'bg-rose-100 text-rose-700',
+}
+
+// Resumo visual exibido sobre a arvore enquanto a rotacao acontece.
+const rotationHint: Record<Exclude<RotationType, 'none'>, { icon: string; label: string }> = {
+  LL: { icon: '↻', label: 'Rotacao simples a direita' },
+  RR: { icon: '↺', label: 'Rotacao simples a esquerda' },
+  LR: { icon: '↺↻', label: 'Rotacao dupla esquerda-direita' },
+  RL: { icon: '↻↺', label: 'Rotacao dupla direita-esquerda' },
 }
 
 function buildRotationMessage(rotation: RotationType, pivotValue: number | null) {
@@ -56,11 +65,16 @@ export default function AvlStudyLab() {
   )
   const [lastRotation, setLastRotation] = useState<RotationType>('none')
   const [lastInsertedValue, setLastInsertedValue] = useState<number | null>(null)
+  const [lastPivotValue, setLastPivotValue] = useState<number | null>(null)
   const [operationLog, setOperationLog] = useState<OperationLogEntry[]>([])
 
   const totalNodes = useMemo(() => countNodes(root), [root])
   const rootBalance = useMemo(() => getBalanceFactor(root), [root])
   const layout = useMemo(() => buildAvlLayout(root), [root])
+  const { nodes: animatedNodes, enteringValues, isAnimating } = useAnimatedAvlLayout(layout)
+
+  // Rotacao destacada durante a animacao (null quando nao ha rotacao a mostrar).
+  const activeRotation = isAnimating && lastRotation !== 'none' ? lastRotation : null
 
   const appendLog = (entry: Omit<OperationLogEntry, 'id'>) => {
     setOperationLog((currentLog) => [
@@ -93,6 +107,7 @@ export default function AvlStudyLab() {
     setRoot(result.root)
     setLastInsertedValue(parsedValue)
     setLastRotation(result.meta.rotation)
+    setLastPivotValue(result.meta.pivotValue)
     setValueInput('')
 
     const rotationMessage = buildRotationMessage(result.meta.rotation, result.meta.pivotValue)
@@ -117,6 +132,7 @@ export default function AvlStudyLab() {
     setRoot(result.root)
     setLastInsertedValue(finalMeta?.value ?? null)
     setLastRotation(finalMeta?.rotation ?? 'none')
+    setLastPivotValue(finalMeta?.pivotValue ?? null)
 
     const presetMessage = `${preset.label}: insercoes ${preset.values.join(' -> ')}. ${buildRotationMessage(
       finalMeta?.rotation ?? 'none',
@@ -135,6 +151,7 @@ export default function AvlStudyLab() {
     setValueInput('')
     setLastRotation('none')
     setLastInsertedValue(null)
+    setLastPivotValue(null)
     setStatusMessage('Laboratorio reiniciado. Escolha um preset ou monte uma nova sequencia manualmente.')
     appendLog({
       kind: 'preset',
@@ -228,7 +245,20 @@ export default function AvlStudyLab() {
             ))}
           </div>
 
-          <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-950 p-4">
+          <div className="relative mt-6 flex min-h-[560px] flex-col justify-center rounded-2xl border border-slate-200 bg-slate-950 p-4">
+            {activeRotation && (
+              <div className="avl-rotation-badge pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2">
+                <div className="flex items-center gap-2 rounded-full border border-white/15 bg-slate-900/90 px-4 py-2 shadow-lg backdrop-blur">
+                  <span className="text-xl leading-none text-white">{rotationHint[activeRotation].icon}</span>
+                  <span className="text-sm font-semibold text-white">
+                    Rotacao {activeRotation}
+                  </span>
+                  <span className="hidden text-xs text-slate-300 sm:inline">
+                    {rotationHint[activeRotation].label}
+                  </span>
+                </div>
+              </div>
+            )}
             {root ? (
               <div className="overflow-x-auto">
                 <svg
@@ -240,8 +270,8 @@ export default function AvlStudyLab() {
                   aria-label="Visualizacao da arvore AVL"
                 >
                   {layout.edges.map((edge) => {
-                    const from = layout.nodes.find((node) => node.value === edge.from)
-                    const to = layout.nodes.find((node) => node.value === edge.to)
+                    const from = animatedNodes.find((node) => node.value === edge.from)
+                    const to = animatedNodes.find((node) => node.value === edge.to)
 
                     if (!from || !to) {
                       return null
@@ -260,34 +290,50 @@ export default function AvlStudyLab() {
                     )
                   })}
 
-                  {layout.nodes.map((node) => (
-                    <g key={node.value} transform={`translate(${node.x}, ${node.y})`}>
-                      <circle
-                        r="24"
-                        fill={lastInsertedValue === node.value ? '#10b981' : '#0ea5e9'}
-                        stroke="#e2e8f0"
-                        strokeWidth="3"
-                      />
-                      <text
-                        y="5"
-                        textAnchor="middle"
-                        fontSize="14"
-                        fontWeight="700"
-                        fill="#f8fafc"
-                      >
-                        {node.value}
-                      </text>
-                      <text
-                        y="42"
-                        textAnchor="middle"
-                        fontSize="11"
-                        fontWeight="600"
-                        fill="#cbd5e1"
-                      >
-                        FB {node.balance}
-                      </text>
-                    </g>
-                  ))}
+                  {animatedNodes.map((node) => {
+                    const isInserted = lastInsertedValue === node.value
+                    const isPivot = activeRotation !== null && lastPivotValue === node.value
+
+                    return (
+                      <g key={node.value} transform={`translate(${node.x}, ${node.y})`}>
+                        {isPivot && (
+                          <circle
+                            className="avl-pivot-ring"
+                            r="26"
+                            fill="none"
+                            stroke="#f59e0b"
+                            strokeWidth="3"
+                          />
+                        )}
+                        <g className={enteringValues.has(node.value) ? 'avl-node-enter' : undefined}>
+                          <circle
+                            r="24"
+                            fill={isInserted ? '#10b981' : '#0ea5e9'}
+                            stroke={isPivot ? '#f59e0b' : '#e2e8f0'}
+                            strokeWidth="3"
+                          />
+                          <text
+                            y="5"
+                            textAnchor="middle"
+                            fontSize="14"
+                            fontWeight="700"
+                            fill="#f8fafc"
+                          >
+                            {node.value}
+                          </text>
+                        </g>
+                        <text
+                          y="42"
+                          textAnchor="middle"
+                          fontSize="11"
+                          fontWeight="600"
+                          fill="#cbd5e1"
+                        >
+                          FB {node.balance}
+                        </text>
+                      </g>
+                    )
+                  })}
                 </svg>
               </div>
             ) : (

@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AvlLayout, AvlLayoutNode } from './avl'
 
 const ANIMATION_DURATION = 1100
 
@@ -9,9 +8,17 @@ function easeInOutCubic(t: number) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
 }
 
-export type AnimatedAvlLayout = {
+/** Formato minimo de layout que o hook sabe animar. */
+export type TreeLayoutLike<TNode> = {
+  nodes: TNode[]
+  edges: { from: number; to: number }[]
+  width: number
+  height: number
+}
+
+export type AnimatedTreeLayout<TNode> = {
   /** Nos com coordenadas interpoladas no frame atual. */
-  nodes: AvlLayoutNode[]
+  nodes: TNode[]
   /** Valores que acabaram de entrar na arvore (para o efeito de surgimento). */
   enteringValues: Set<number>
   /** Verdadeiro enquanto os nos estao deslizando para a nova posicao. */
@@ -19,13 +26,17 @@ export type AnimatedAvlLayout = {
 }
 
 /**
- * Recebe o layout final da AVL e devolve um layout cujas posicoes sao
- * interpoladas a cada frame. Como cada no e identificado pelo seu valor,
- * uma rotacao se traduz no mesmo no mudando de coordenada -- e e justamente
- * esse deslocamento que animamos para tornar a rotacao visivel.
+ * Recebe o layout final de uma arvore (AVL, rubro-negra, ...) e devolve um
+ * layout cujas posicoes sao interpoladas a cada frame. Como cada no e
+ * identificado pelo seu valor, uma rotacao se traduz no mesmo no mudando de
+ * coordenada -- e e justamente esse deslocamento que animamos para tornar o
+ * rebalanceamento visivel. Propriedades extras do no (cor, fator de
+ * balanceamento, ...) sao preservadas via espalhamento.
  */
-export function useAnimatedAvlLayout(layout: AvlLayout): AnimatedAvlLayout {
-  const [nodes, setNodes] = useState<AvlLayoutNode[]>(layout.nodes)
+export function useAnimatedTreeLayout<TNode extends { value: number; x: number; y: number }>(
+  layout: TreeLayoutLike<TNode>,
+): AnimatedTreeLayout<TNode> {
+  const [nodes, setNodes] = useState<TNode[]>(layout.nodes)
   const [enteringValues, setEnteringValues] = useState<Set<number>>(() => new Set())
   const [isAnimating, setIsAnimating] = useState(false)
 

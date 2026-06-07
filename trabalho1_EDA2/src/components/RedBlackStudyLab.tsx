@@ -1,81 +1,120 @@
 import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
-  AVL_PRESETS,
-  buildAvlFromValues,
-  buildAvlLayout,
+  RB_PRESETS,
+  buildRedBlackFromValues,
+  buildRedBlackLayout,
   countNodes,
-  getBalanceFactor,
-  insertIntoAvl,
-  type AvlNode,
-  type AvlLayoutNode,
-  type RotationType,
-} from '../utils/avl'
+  countRedNodes,
+  getBlackHeight,
+  insertIntoRedBlack,
+  type RbCategory,
+  type RbInsertMeta,
+  type RbLayoutNode,
+  type RbNode,
+} from '../utils/redBlack'
 import { useAnimatedTreeLayout } from '../utils/useAnimatedTreeLayout'
+
+type RbActionKind = 'none' | 'recolor' | 'rotation' | 'recolor-rotation'
 
 type OperationLogEntry = {
   id: number
   kind: 'insert' | 'preset'
   message: string
-  rotation: RotationType
+  action: RbActionKind
 }
 
-const rotationTone: Record<RotationType, string> = {
+const actionLabel: Record<RbActionKind, string> = {
+  none: 'Sem ajuste',
+  recolor: 'Recoloracao',
+  rotation: 'Rotacao',
+  'recolor-rotation': 'Recolor + Rotacao',
+}
+
+const actionTone: Record<RbActionKind, string> = {
   none: 'bg-slate-100 text-slate-700',
-  LL: 'bg-emerald-100 text-emerald-700',
-  RR: 'bg-sky-100 text-sky-700',
-  LR: 'bg-amber-100 text-amber-700',
-  RL: 'bg-rose-100 text-rose-700',
+  recolor: 'bg-amber-100 text-amber-700',
+  rotation: 'bg-sky-100 text-sky-700',
+  'recolor-rotation': 'bg-violet-100 text-violet-700',
 }
 
-// Resumo visual exibido sobre a arvore enquanto a rotacao acontece.
-const rotationHint: Record<Exclude<RotationType, 'none'>, { icon: string; label: string }> = {
-  LL: { icon: '↻', label: 'Rotacao simples a direita' },
-  RR: { icon: '↺', label: 'Rotacao simples a esquerda' },
-  LR: { icon: '↺↻', label: 'Rotacao dupla esquerda-direita' },
-  RL: { icon: '↻↺', label: 'Rotacao dupla direita-esquerda' },
+const categoryLabel: Record<RbCategory, string> = {
+  recolor: 'Recoloracao',
+  rotation: 'Rotacao',
+  double: 'Rotacao dupla',
 }
 
-function buildRotationMessage(rotation: RotationType, pivotValue: number | null) {
-  if (rotation === 'none') {
-    return 'Nenhuma rotacao foi necessaria.'
-  }
-
-  const pivotText = pivotValue === null ? '' : ` no valor ${pivotValue}`
-
-  if (rotation === 'LL') {
-    return `Desbalanceamento LL detectado${pivotText}. O rebalanceamento usou rotacao simples a direita.`
-  }
-
-  if (rotation === 'RR') {
-    return `Desbalanceamento RR detectado${pivotText}. O rebalanceamento usou rotacao simples a esquerda.`
-  }
-
-  if (rotation === 'LR') {
-    return `Desbalanceamento LR detectado${pivotText}. O rebalanceamento usou rotacao dupla esquerda-direita.`
-  }
-
-  return `Desbalanceamento RL detectado${pivotText}. O rebalanceamento usou rotacao dupla direita-esquerda.`
+const categoryTone: Record<RbCategory, string> = {
+  recolor: 'bg-amber-100 text-amber-700',
+  rotation: 'bg-sky-100 text-sky-700',
+  double: 'bg-violet-100 text-violet-700',
 }
 
-export default function AvlStudyLab() {
-  const [root, setRoot] = useState<AvlNode | null>(null)
+const NODE_FILL: Record<RbNode['color'], string> = {
+  red: '#dc2626',
+  black: '#1e293b',
+}
+
+function getActionKind(meta: RbInsertMeta): RbActionKind {
+  const hasRotation = meta.rotations.length > 0
+  const hasRecolor = meta.recolorCount > 0
+
+  if (hasRotation && hasRecolor) {
+    return 'recolor-rotation'
+  }
+  if (hasRotation) {
+    return 'rotation'
+  }
+  if (hasRecolor) {
+    return 'recolor'
+  }
+  return 'none'
+}
+
+function buildActionMessage(meta: RbInsertMeta): string {
+  const parts: string[] = []
+
+  if (meta.recolorCount > 0) {
+    const plural = meta.recolorCount > 1 ? 'recoloracoes' : 'recoloracao'
+    parts.push(`${meta.recolorCount} ${plural} pelo caso do tio vermelho`)
+  }
+
+  for (const rotation of meta.rotations) {
+    const side = rotation.direction === 'left' ? 'esquerda' : 'direita'
+    parts.push(`rotacao a ${side} no no ${rotation.pivotValue}`)
+  }
+
+  if (meta.rootBlackened) {
+    parts.push('raiz repintada de preto')
+  }
+
+  if (parts.length === 0) {
+    return 'Nenhum ajuste de cor ou rotacao foi necessario.'
+  }
+
+  const sentence = parts.join('; ')
+  return `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.`
+}
+
+export default function RedBlackStudyLab() {
+  const [root, setRoot] = useState<RbNode | null>(null)
   const [valueInput, setValueInput] = useState('')
   const [statusMessage, setStatusMessage] = useState(
-    'Comece inserindo valores ou carregue um dos quatro casos classicos de AVL.',
+    'Comece inserindo valores ou carregue um dos casos classicos de arvore rubro-negra.',
   )
-  const [lastRotation, setLastRotation] = useState<RotationType>('none')
+  const [lastAction, setLastAction] = useState<RbActionKind>('none')
   const [lastInsertedValue, setLastInsertedValue] = useState<number | null>(null)
-  const [lastPivotValue, setLastPivotValue] = useState<number | null>(null)
+  const [highlightValues, setHighlightValues] = useState<number[]>([])
   const [operationLog, setOperationLog] = useState<OperationLogEntry[]>([])
 
   const totalNodes = useMemo(() => countNodes(root), [root])
-  const rootBalance = useMemo(() => getBalanceFactor(root), [root])
-  const layout = useMemo(() => buildAvlLayout(root), [root])
-  const { nodes: animatedNodes, enteringValues, isAnimating } = useAnimatedTreeLayout<AvlLayoutNode>(layout)
+  const redNodes = useMemo(() => countRedNodes(root), [root])
+  const blackHeight = useMemo(() => getBlackHeight(root), [root])
+  const layout = useMemo(() => buildRedBlackLayout(root), [root])
+  const { nodes: animatedNodes, enteringValues, isAnimating } = useAnimatedTreeLayout<RbLayoutNode>(layout)
 
-  // Rotacao destacada durante a animacao (null quando nao ha rotacao a mostrar).
-  const activeRotation = isAnimating && lastRotation !== 'none' ? lastRotation : null
+  // O destaque (anel + banner) so aparece enquanto a animacao do ajuste roda.
+  const showAction = isAnimating && lastAction !== 'none'
 
   const appendLog = (entry: Omit<OperationLogEntry, 'id'>) => {
     setOperationLog((currentLog) => [
@@ -89,60 +128,62 @@ export default function AvlStudyLab() {
 
     const parsedValue = Number(valueInput)
     if (!Number.isInteger(parsedValue)) {
-      setStatusMessage('Digite um numero inteiro para inserir na AVL.')
+      setStatusMessage('Digite um numero inteiro para inserir na arvore rubro-negra.')
       return
     }
 
-    const result = insertIntoAvl(root, parsedValue)
+    const result = insertIntoRedBlack(root, parsedValue)
 
     if (!result.meta.inserted) {
-      setStatusMessage(`O valor ${parsedValue} ja existe na arvore. A AVL nao permite duplicatas neste estudo.`)
+      setStatusMessage(`O valor ${parsedValue} ja existe na arvore. Este estudo nao usa duplicatas.`)
       appendLog({
         kind: 'insert',
-        rotation: 'none',
+        action: 'none',
         message: `Tentativa ignorada: ${parsedValue} ja estava presente.`,
       })
       return
     }
 
+    const actionKind = getActionKind(result.meta)
+    const actionMessage = buildActionMessage(result.meta)
+
     setRoot(result.root)
     setLastInsertedValue(parsedValue)
-    setLastRotation(result.meta.rotation)
-    setLastPivotValue(result.meta.pivotValue)
+    setLastAction(actionKind)
+    setHighlightValues(result.meta.highlightValues)
     setValueInput('')
 
-    const rotationMessage = buildRotationMessage(result.meta.rotation, result.meta.pivotValue)
-    setStatusMessage(`Valor ${parsedValue} inserido. ${rotationMessage}`)
+    setStatusMessage(`Valor ${parsedValue} inserido. ${actionMessage}`)
     appendLog({
       kind: 'insert',
-      rotation: result.meta.rotation,
-      message: `Insercao de ${parsedValue}. ${rotationMessage}`,
+      action: actionKind,
+      message: `Insercao de ${parsedValue}. ${actionMessage}`,
     })
   }
 
   const handleLoadPreset = (presetId: string) => {
-    const preset = AVL_PRESETS.find((item) => item.id === presetId)
+    const preset = RB_PRESETS.find((item) => item.id === presetId)
 
     if (!preset) {
       return
     }
 
-    const result = buildAvlFromValues(preset.values)
+    const result = buildRedBlackFromValues(preset.values)
     const finalMeta = result.metas[result.metas.length - 1]
+    const actionKind = finalMeta ? getActionKind(finalMeta) : 'none'
 
     setRoot(result.root)
     setLastInsertedValue(finalMeta?.value ?? null)
-    setLastRotation(finalMeta?.rotation ?? 'none')
-    setLastPivotValue(finalMeta?.pivotValue ?? null)
+    setLastAction(actionKind)
+    setHighlightValues(finalMeta?.highlightValues ?? [])
 
-    const presetMessage = `${preset.label}: insercoes ${preset.values.join(' -> ')}. ${buildRotationMessage(
-      finalMeta?.rotation ?? 'none',
-      finalMeta?.pivotValue ?? null,
-    )}`
+    const presetMessage = `${preset.label}: insercoes ${preset.values.join(' -> ')}. ${
+      finalMeta ? buildActionMessage(finalMeta) : ''
+    }`
     setStatusMessage(presetMessage)
     appendLog({
       kind: 'preset',
-      rotation: finalMeta?.rotation ?? 'none',
+      action: actionKind,
       message: `Preset carregado (${preset.label}). ${preset.description}`,
     })
   }
@@ -150,13 +191,13 @@ export default function AvlStudyLab() {
   const handleReset = () => {
     setRoot(null)
     setValueInput('')
-    setLastRotation('none')
+    setLastAction('none')
     setLastInsertedValue(null)
-    setLastPivotValue(null)
+    setHighlightValues([])
     setStatusMessage('Laboratorio reiniciado. Escolha um preset ou monte uma nova sequencia manualmente.')
     appendLog({
       kind: 'preset',
-      rotation: 'none',
+      action: 'none',
       message: 'Arvore reiniciada para um novo experimento.',
     })
   }
@@ -165,32 +206,35 @@ export default function AvlStudyLab() {
     <section className="mt-6 battle-card rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-2xl">
-          <p className="text-sm font-semibold uppercase tracking-wide text-sky-600">
+          <p className="text-sm font-semibold uppercase tracking-wide text-rose-600">
             Arvores Balanceadas
           </p>
-          <h2 className="mt-2 text-3xl font-bold text-slate-900">Laboratorio AVL</h2>
+          <h2 className="mt-2 text-3xl font-bold text-slate-900">Laboratorio Rubro-Negra</h2>
           <p className="mt-3 text-slate-600">
-            Estude insercoes em arvore AVL observando altura, fator de balanceamento e o tipo de
-            rotacao usado para restaurar a busca binaria balanceada.
+            Estude insercoes em arvore rubro-negra observando as cores dos nos, a altura preta e como
+            o balanceamento se restaura por recoloracao e rotacoes.
           </p>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:w-[360px]">
           <article className="rounded-xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Nos</p>
-            <p className="mt-2 text-2xl font-bold text-slate-900">{totalNodes}</p>
+            <p className="mt-2 text-2xl font-bold text-slate-900">
+              {totalNodes}
+              <span className="ml-2 text-sm font-semibold text-rose-600">{redNodes} rubros</span>
+            </p>
           </article>
           <article className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Altura</p>
-            <p className="mt-2 text-2xl font-bold text-slate-900">{root?.height ?? 0}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Altura preta</p>
+            <p className="mt-2 text-2xl font-bold text-slate-900">{blackHeight}</p>
           </article>
           <article className="rounded-xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Raiz</p>
             <p className="mt-2 text-2xl font-bold text-slate-900">{root?.value ?? '-'}</p>
           </article>
           <article className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ultima rotacao</p>
-            <p className="mt-2 text-2xl font-bold text-slate-900">{lastRotation === 'none' ? '-' : lastRotation}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ultima acao</p>
+            <p className="mt-2 text-base font-bold text-slate-900">{actionLabel[lastAction]}</p>
           </article>
         </div>
       </div>
@@ -207,11 +251,11 @@ export default function AvlStudyLab() {
               value={valueInput}
               onChange={(event) => setValueInput(event.target.value)}
               placeholder="Ex.: 42"
-              className="rounded-xl border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-sky-500"
+              className="rounded-xl border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-rose-500"
             />
             <button
               type="submit"
-              className="rounded-xl bg-emerald-600 px-5 py-3 font-semibold text-white transition hover:bg-emerald-700"
+              className="rounded-xl bg-rose-600 px-5 py-3 font-semibold text-white transition hover:bg-rose-700"
             >
               Inserir valor
             </button>
@@ -225,17 +269,17 @@ export default function AvlStudyLab() {
           </form>
 
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            {AVL_PRESETS.map((preset) => (
+            {RB_PRESETS.map((preset) => (
               <button
                 key={preset.id}
                 type="button"
                 onClick={() => handleLoadPreset(preset.id)}
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-left transition hover:border-sky-300 hover:bg-sky-50"
+                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-left transition hover:border-rose-300 hover:bg-rose-50"
               >
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-semibold text-slate-900">{preset.label}</p>
-                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${rotationTone[preset.expectedRotation]}`}>
-                    {preset.expectedRotation}
+                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${categoryTone[preset.category]}`}>
+                    {categoryLabel[preset.category]}
                   </span>
                 </div>
                 <p className="mt-2 text-sm text-slate-600">{preset.description}</p>
@@ -247,16 +291,14 @@ export default function AvlStudyLab() {
           </div>
 
           <div className="relative mt-6 flex min-h-[560px] flex-col justify-center rounded-2xl border border-slate-200 bg-slate-950 p-4">
-            {activeRotation && (
+            {showAction && (
               <div className="tree-event-badge pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2">
                 <div className="flex items-center gap-2 rounded-full border border-white/15 bg-slate-900/90 px-4 py-2 shadow-lg backdrop-blur">
-                  <span className="text-xl leading-none text-white">{rotationHint[activeRotation].icon}</span>
-                  <span className="text-sm font-semibold text-white">
-                    Rotacao {activeRotation}
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block h-3 w-3 rounded-full bg-rose-500" />
+                    <span className="inline-block h-3 w-3 rounded-full bg-slate-200" />
                   </span>
-                  <span className="hidden text-xs text-slate-300 sm:inline">
-                    {rotationHint[activeRotation].label}
-                  </span>
+                  <span className="text-sm font-semibold text-white">{actionLabel[lastAction]}</span>
                 </div>
               </div>
             )}
@@ -268,7 +310,7 @@ export default function AvlStudyLab() {
                   viewBox={`0 0 ${layout.width} ${layout.height}`}
                   className="mx-auto block"
                   role="img"
-                  aria-label="Visualizacao da arvore AVL"
+                  aria-label="Visualizacao da arvore rubro-negra"
                 >
                   {layout.edges.map((edge) => {
                     const from = animatedNodes.find((node) => node.value === edge.from)
@@ -293,11 +335,12 @@ export default function AvlStudyLab() {
 
                   {animatedNodes.map((node) => {
                     const isInserted = lastInsertedValue === node.value
-                    const isPivot = activeRotation !== null && lastPivotValue === node.value
+                    const isHighlighted = showAction && highlightValues.includes(node.value)
+                    const strokeColor = isInserted ? '#34d399' : isHighlighted ? '#f59e0b' : '#e2e8f0'
 
                     return (
                       <g key={node.value} transform={`translate(${node.x}, ${node.y})`}>
-                        {isPivot && (
+                        {isHighlighted && (
                           <circle
                             className="tree-highlight-ring"
                             r="26"
@@ -309,8 +352,8 @@ export default function AvlStudyLab() {
                         <g className={enteringValues.has(node.value) ? 'tree-node-enter' : undefined}>
                           <circle
                             r="24"
-                            fill={isInserted ? '#10b981' : '#0ea5e9'}
-                            stroke={isPivot ? '#f59e0b' : '#e2e8f0'}
+                            fill={NODE_FILL[node.color]}
+                            stroke={strokeColor}
                             strokeWidth="3"
                           />
                           <text
@@ -328,9 +371,9 @@ export default function AvlStudyLab() {
                           textAnchor="middle"
                           fontSize="11"
                           fontWeight="600"
-                          fill="#cbd5e1"
+                          fill={node.color === 'red' ? '#fca5a5' : '#94a3b8'}
                         >
-                          FB {node.balance}
+                          {node.color === 'red' ? 'rubro' : 'negro'}
                         </text>
                       </g>
                     )
@@ -339,7 +382,7 @@ export default function AvlStudyLab() {
               </div>
             ) : (
               <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-slate-700 text-center text-slate-400">
-                Carregue um caso classico ou insira valores para ver a AVL nascer.
+                Carregue um caso classico ou insira valores para ver a rubro-negra nascer.
               </div>
             )}
           </div>
@@ -347,17 +390,19 @@ export default function AvlStudyLab() {
 
         <div className="space-y-4">
           <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <h3 className="text-lg font-semibold text-slate-900">Leitura rapida da arvore</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-700">
-              Cada no mostra o valor armazenado e, logo abaixo, o fator de balanceamento (`FB`),
-              calculado por altura da esquerda menos altura da direita.
-            </p>
+            <h3 className="text-lg font-semibold text-slate-900">Regras da rubro-negra</h3>
+            <ul className="mt-2 space-y-2 text-sm leading-6 text-slate-700">
+              <li>1. Todo no e rubro ou negro; a raiz e sempre negra.</li>
+              <li>2. Um no rubro nunca pode ter um filho rubro (sem vermelhos consecutivos).</li>
+              <li>3. Todo caminho da raiz ate as folhas tem a mesma quantidade de nos negros.</li>
+            </ul>
             <p className="mt-3 text-sm leading-6 text-slate-700">
-              Enquanto o `FB` permanecer entre `-1` e `1`, a AVL continua balanceada. Fora desse
-              intervalo, alguma das rotacoes `LL`, `RR`, `LR` ou `RL` precisa acontecer.
+              Ao inserir, o no nasce rubro. Se isso quebrar a regra 2, a arvore conserta com
+              <span className="font-semibold text-amber-700"> recoloracao</span> ou
+              <span className="font-semibold text-sky-700"> rotacoes</span>.
             </p>
             <p className="mt-3 text-sm font-semibold text-slate-900">
-              Fator da raiz atual: <span className="text-sky-700">{rootBalance}</span>
+              Altura preta atual: <span className="text-rose-700">{blackHeight}</span>
             </p>
           </section>
 
@@ -373,8 +418,8 @@ export default function AvlStudyLab() {
                       <p className="text-sm font-semibold text-slate-900">
                         {entry.kind === 'insert' ? 'Insercao manual' : 'Preset demonstrativo'}
                       </p>
-                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${rotationTone[entry.rotation]}`}>
-                        {entry.rotation === 'none' ? 'Sem rotacao' : entry.rotation}
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${actionTone[entry.action]}`}>
+                        {actionLabel[entry.action]}
                       </span>
                     </div>
                     <p className="mt-2 text-sm leading-6 text-slate-700">{entry.message}</p>

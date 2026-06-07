@@ -7,6 +7,7 @@ import { runBattleRound } from './utils/benchmark'
 import type { BattleRound, ScoreEntry } from './types/search'
 import SortingVisualizer from './components/SortingVisualizer'
 import AvlStudyLab from './components/AvlStudyLab'
+import RedBlackStudyLab from './components/RedBlackStudyLab'
 
 
 function buildInitialScoreboard(): ScoreEntry[] {
@@ -274,6 +275,7 @@ function App() {
 
       <SortingVisualizer />
       <AvlStudyLab />
+      <RedBlackStudyLab />
 
       <section className="mt-6 rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
         <p className="text-sm font-semibold uppercase tracking-wide text-sky-600">Cadastro local</p>

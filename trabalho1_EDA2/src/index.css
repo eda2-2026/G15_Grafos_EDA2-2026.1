@@ -20,10 +20,10 @@ body {
     #f8fafc;
 }
 
-/* --- Animacoes da AVL --- */
+/* --- Animacoes das arvores (AVL, rubro-negra, ...) --- */
 
 /* Surgimento do no recem-inserido: cresce a partir do centro com um leve overshoot. */
-@keyframes avlNodeEnter {
+@keyframes treeNodeEnter {
   from {
     transform: scale(0);
     opacity: 0;
@@ -34,12 +34,12 @@ body {
   }
 }
 
-.avl-node-enter {
-  animation: avlNodeEnter 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+.tree-node-enter {
+  animation: treeNodeEnter 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
-/* Anel pulsante que marca o pivo onde a rotacao aconteceu. */
-@keyframes avlPivotPulse {
+/* Anel pulsante que marca o no onde a rotacao/recoloracao aconteceu. */
+@keyframes treeHighlightPulse {
   0% {
     r: 26;
     opacity: 0.7;
@@ -50,12 +50,12 @@ body {
   }
 }
 
-.avl-pivot-ring {
-  animation: avlPivotPulse 1100ms ease-out infinite;
+.tree-highlight-ring {
+  animation: treeHighlightPulse 1100ms ease-out infinite;
 }
 
-/* Entrada do aviso de rotacao sobre a arvore. */
-@keyframes avlBadgeIn {
+/* Entrada do aviso de rebalanceamento sobre a arvore. */
+@keyframes treeEventBadgeIn {
   from {
     opacity: 0;
     transform: translateY(-8px);
@@ -66,14 +66,14 @@ body {
   }
 }
 
-.avl-rotation-badge {
-  animation: avlBadgeIn 260ms ease-out both;
+.tree-event-badge {
+  animation: treeEventBadgeIn 260ms ease-out both;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .avl-node-enter,
-  .avl-pivot-ring,
-  .avl-rotation-badge {
+  .tree-node-enter,
+  .tree-highlight-ring,
+  .tree-event-badge {
     animation: none;
   }
 }

@@ -10,6 +10,21 @@ import AvlStudyLab from './components/AvlStudyLab'
 import RedBlackStudyLab from './components/RedBlackStudyLab'
 
 
+type TabId = 'busca' | 'ordenacao' | 'arvores' | 'tags'
+type TreeTab = 'avl' | 'rubro-negra'
+
+const TABS: { id: TabId; label: string }[] = [
+  { id: 'busca', label: 'Busca por tags' },
+  { id: 'ordenacao', label: 'Ordenacao' },
+  { id: 'arvores', label: 'Arvores' },
+  { id: 'tags', label: 'Cadastro de tags' },
+]
+
+const TREE_TABS: { id: TreeTab; label: string }[] = [
+  { id: 'avl', label: 'Arvore AVL' },
+  { id: 'rubro-negra', label: 'Arvore Rubro-Negra' },
+]
+
 function buildInitialScoreboard(): ScoreEntry[] {
   return BATTLE_ALGORITHMS.map((algorithm) => ({
     algorithmId: algorithm.id,
@@ -33,6 +48,8 @@ function App() {
     'Faça uma busca e escolha um algoritmo para tentar prever o vencedor da rodada.',
   )
   const [systemTagsVisible, setSystemTagsVisible] = useState(true)
+  const [activeTab, setActiveTab] = useState<TabId>('busca')
+  const [activeTree, setActiveTree] = useState<TreeTab>('avl')
 
   const searchableTags = useMemo(() => [...tags, ...systemTags], [tags, systemTags])
   const sortedSearchableTags = useMemo(
@@ -139,6 +156,33 @@ function App() {
 
   return (
     <main className="mx-auto min-h-screen max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
+      <header className="mb-6">
+        <p className="text-sm font-semibold uppercase tracking-wide text-sky-600">
+          Estruturas de Dados e Algoritmos II
+        </p>
+        <h1 className="mt-1 text-2xl font-bold text-slate-900">Laboratorios interativos</h1>
+      </header>
+
+      <nav className="mb-6 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white/70 p-2 shadow-sm">
+        {TABS.map((tab) => {
+          const isActive = activeTab === tab.id
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              aria-current={isActive ? 'page' : undefined}
+              className={`flex-1 whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                isActive ? 'bg-slate-900 text-white shadow' : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              {tab.label}
+            </button>
+          )
+        })}
+      </nav>
+
+      {activeTab === 'busca' && (
       <section className="battle-card rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
             <p className="text-sm font-semibold uppercase tracking-wide text-sky-600">Modo Batalha</p>
             <h1 className="mt-2 text-3xl font-bold text-slate-900">Gamificação de busca por tags</h1>
@@ -272,11 +316,36 @@ function App() {
           </div>
         )}
       </section>
+      )}
 
-      <SortingVisualizer />
-      <AvlStudyLab />
-      <RedBlackStudyLab />
+      {activeTab === 'ordenacao' && <SortingVisualizer />}
 
+      {activeTab === 'arvores' && (
+        <div className="mt-6">
+          <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white/70 p-2 shadow-sm">
+            {TREE_TABS.map((tree) => {
+              const isActive = activeTree === tree.id
+              return (
+                <button
+                  key={tree.id}
+                  type="button"
+                  onClick={() => setActiveTree(tree.id)}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={`flex-1 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                    isActive ? 'bg-slate-700 text-white shadow' : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {tree.label}
+                </button>
+              )
+            })}
+          </div>
+          {activeTree === 'avl' ? <AvlStudyLab /> : <RedBlackStudyLab />}
+        </div>
+      )}
+
+      {activeTab === 'tags' && (
+      <>
       <section className="mt-6 rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
         <p className="text-sm font-semibold uppercase tracking-wide text-sky-600">Cadastro local</p>
         <h2 className="mt-2 text-2xl font-bold text-slate-900">Criar tags</h2>
@@ -360,6 +429,8 @@ function App() {
           </>
         )}
       </section>
+      </>
+      )}
     </main>
   )
 }

@@ -2,7 +2,7 @@
 
 Numero da Lista: 1<br>
 Conteudo da Disciplina: Algoritmos de Busca<br>
-URL de apresentação do trabalho: https://youtu.be/AfJ6eRwazv4<br>
+URL de apresentação do trabalho: https://www.youtube.com/watch?v=yNFd9T5aB2A<br>
 
 ## Alunos
 |Matricula | Aluno |
@@ -14,6 +14,8 @@ URL de apresentação do trabalho: https://youtu.be/AfJ6eRwazv4<br>
 Este projeto apresenta uma aplicacao gamificada para estudar o comportamento de quatro algoritmos de busca em cenarios praticos.
 
 O usuario digita uma tag, escolhe qual algoritmo acredita que sera o vencedor da rodada e inicia a batalha. Em seguida, todos os algoritmos sao executados e comparados por desempenho. O sistema mostra o vencedor e atualiza pontuacao, streak e ranking.
+
+O mesmo ambiente tambem inclui um visualizador de ordenacao e dois laboratorios interativos de arvores balanceadas para estudo de insercoes, rotacoes e propriedades de balanceamento.
 
 Algoritmos abordados:
 - Busca Sequencial
@@ -29,6 +31,16 @@ Algoritmos de ordenação presentes no mesmo repositório:
 - Heap Sort
 
 O visualizador de ordenação está implementado em `trabalho1_EDA2/src/components/SortingVisualizer.tsx`, com animação das operações, contagem de comparações e trocas e medição de tempo.
+
+Algoritmos de arvores presentes no mesmo repositorio:
+- Arvore AVL
+- Arvore Rubro-Negra
+
+Os laboratorios de arvores estao implementados em `trabalho1_EDA2/src/components/AvlStudyLab.tsx` e `trabalho1_EDA2/src/components/RedBlackStudyLab.tsx`, com insercao interativa de valores, presets para casos classicos e visualizacao do rebalanceamento.
+
+Na AVL, o usuario acompanha altura, fator de balanceamento e os quatro casos classicos de rotacao: LL, RR, LR e RL.
+
+Na Rubro-Negra, o usuario acompanha cores dos nos, altura preta, recoloracoes e rotacoes usadas para restaurar as propriedades da estrutura.
 
 ## Screenshots
 
@@ -67,6 +79,8 @@ Passo a passo de uso na interface:
 2. Selecione o algoritmo do seu palpite.
 3. Clique em "Iniciar rodada".
 4. Analise o vencedor, os tempos e o placar.
+5. Acesse a aba "Ordenacao" para visualizar os algoritmos de ordenacao.
+6. Acesse a aba "Arvores" para estudar os laboratorios AVL e Rubro-Negra.
 
 Para executar o benchmark da busca sequencial via CLI:
 

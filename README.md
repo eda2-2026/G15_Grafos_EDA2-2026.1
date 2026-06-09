@@ -49,6 +49,10 @@ Na Rubro-Negra, o usuario acompanha cores dos nos, altura preta, recoloracoes e 
 ![Placar e ranking](docs/screenshots/placar-ranking.PNG)
 ![Modo ordenação](docs/screenshots/modo-ordenacao.PNG)
 
+### Árvore
+![Arvore AVL](docs/screenshots/arvore_avl.png)
+![Arvore Rubro](docs/screenshots/arvore_rubro.png)
+
 ## Instalacao
 Linguagem: TypeScript e JavaScript<br>
 Framework: React + Vite<br>

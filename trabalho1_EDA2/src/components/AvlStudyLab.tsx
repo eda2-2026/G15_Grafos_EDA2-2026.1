@@ -1,23 +1,39 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
   AVL_PRESETS,
-  buildAvlFromValues,
   buildAvlLayout,
   countNodes,
   getBalanceFactor,
-  insertIntoAvl,
+  insertIntoAvlWithoutBalancing,
+  insertIntoAvlWithPlayback,
   type AvlNode,
   type AvlLayoutNode,
+  type AvlPlaybackStep,
   type RotationType,
 } from '../utils/avl'
 import { useAnimatedTreeLayout } from '../utils/useAnimatedTreeLayout'
+
+const PLAYBACK_STEP_DELAY_MS = 2000
+const PRESET_INSERT_STEP_DELAY_MS = 700
 
 type OperationLogEntry = {
   id: number
   kind: 'insert' | 'preset'
   message: string
   rotation: RotationType
+}
+
+type PreparedAvlPreset = {
+  presetId: string
+  label: string
+  description: string
+  values: number[]
+  preparedRoot: AvlNode | null
+  finalRoot: AvlNode | null
+  finalRotation: RotationType
+  finalPivotValue: number | null
+  rotationSteps: AvlPlaybackStep[]
 }
 
 const rotationTone: Record<RotationType, string> = {
@@ -61,6 +77,8 @@ function buildRotationMessage(rotation: RotationType, pivotValue: number | null)
 export default function AvlStudyLab() {
   const [root, setRoot] = useState<AvlNode | null>(null)
   const [valueInput, setValueInput] = useState('')
+  const [sequenceValues, setSequenceValues] = useState<number[]>([])
+  const [selectedPresetId, setSelectedPresetId] = useState<string>(AVL_PRESETS[0]?.id ?? '')
   const [statusMessage, setStatusMessage] = useState(
     'Comece inserindo valores ou carregue um dos quatro casos classicos de AVL.',
   )
@@ -68,6 +86,10 @@ export default function AvlStudyLab() {
   const [lastInsertedValue, setLastInsertedValue] = useState<number | null>(null)
   const [lastPivotValue, setLastPivotValue] = useState<number | null>(null)
   const [operationLog, setOperationLog] = useState<OperationLogEntry[]>([])
+  const [preparedPreset, setPreparedPreset] = useState<PreparedAvlPreset | null>(null)
+  const [isPreparingPreset, setIsPreparingPreset] = useState(false)
+  const [isPlayingPreset, setIsPlayingPreset] = useState(false)
+  const playbackRunIdRef = useRef(0)
 
   const totalNodes = useMemo(() => countNodes(root), [root])
   const rootBalance = useMemo(() => getBalanceFactor(root), [root])
@@ -84,8 +106,177 @@ export default function AvlStudyLab() {
     ].slice(0, 8))
   }
 
+  useEffect(() => {
+    return () => {
+      playbackRunIdRef.current += 1
+    }
+  }, [])
+
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+  const stopPlayback = () => {
+    playbackRunIdRef.current += 1
+    setIsPreparingPreset(false)
+    setIsPlayingPreset(false)
+  }
+
+  const applyPlaybackStep = (step: AvlPlaybackStep) => {
+    setRoot(step.root)
+    setLastInsertedValue(step.value)
+    setLastRotation(step.stage === 'rotation' ? step.rotation : 'none')
+    setLastPivotValue(step.stage === 'rotation' ? step.pivotValue : null)
+  }
+
+  const clearPreparedScenario = () => {
+    setPreparedPreset(null)
+  }
+
+  const preparePreset = async (presetId: string) => {
+    const preset = AVL_PRESETS.find((item) => item.id === presetId)
+
+    if (!preset) {
+      return
+    }
+
+    const runId = playbackRunIdRef.current + 1
+    playbackRunIdRef.current = runId
+    setSelectedPresetId(presetId)
+    clearPreparedScenario()
+    setSequenceValues([])
+    setIsPreparingPreset(true)
+    setRoot(null)
+    setLastRotation('none')
+    setLastInsertedValue(null)
+    setLastPivotValue(null)
+    setStatusMessage(`Preparando ${preset.label}: ${preset.values.join(' -> ')}.`)
+
+    let currentRoot: AvlNode | null = null
+    let preparedRoot: AvlNode | null = null
+    let finalRoot: AvlNode | null = null
+    let finalRotation: RotationType = 'none'
+    let finalPivotValue: number | null = null
+    let rotationSteps: AvlPlaybackStep[] = []
+
+    try {
+      for (let index = 0; index < preset.values.length; index += 1) {
+        const value = preset.values[index]
+        const isLastValue = index === preset.values.length - 1
+
+        if (isLastValue) {
+          const result = insertIntoAvlWithPlayback(currentRoot, value)
+          const insertStep = result.steps.find((step) => step.stage === 'insert')
+
+          preparedRoot = insertStep?.root ?? result.root
+          finalRoot = result.root
+          finalRotation = result.meta.rotation
+          finalPivotValue = result.meta.pivotValue
+          rotationSteps = result.steps.filter((step) => step.stage === 'rotation')
+          currentRoot = preparedRoot
+        } else {
+          const result = insertIntoAvlWithoutBalancing(currentRoot, value)
+          currentRoot = result.root
+        }
+
+        if (playbackRunIdRef.current !== runId) {
+          return
+        }
+
+        setRoot(currentRoot)
+        setLastInsertedValue(value)
+        setLastRotation('none')
+        setLastPivotValue(null)
+
+        if (isLastValue && finalRotation !== 'none') {
+          setStatusMessage(`Arvore montada com ${preset.values.join(' -> ')}. Clique em um botao para iniciar as rotacoes.`)
+        } else {
+          setStatusMessage(`Inserindo ${value} para montar a arvore do caso ${preset.label}.`)
+        }
+
+        await sleep(PRESET_INSERT_STEP_DELAY_MS)
+      }
+
+      if (playbackRunIdRef.current !== runId) {
+        return
+      }
+
+      setSequenceValues(preset.values)
+      setPreparedPreset({
+        presetId,
+        label: preset.label,
+        description: preset.description,
+        values: preset.values,
+        preparedRoot,
+        finalRoot,
+        finalRotation,
+        finalPivotValue,
+        rotationSteps,
+      })
+    } finally {
+      if (playbackRunIdRef.current === runId) {
+        setIsPreparingPreset(false)
+      }
+    }
+  }
+
+  const runPresetStepByStep = async () => {
+    if (!preparedPreset || isPreparingPreset || isPlayingPreset) {
+      return
+    }
+
+    const runId = playbackRunIdRef.current + 1
+    playbackRunIdRef.current = runId
+    setIsPlayingPreset(true)
+
+    try {
+      for (let index = 0; index < preparedPreset.rotationSteps.length; index += 1) {
+        if (playbackRunIdRef.current !== runId) {
+          return
+        }
+
+        const step = preparedPreset.rotationSteps[index]
+        applyPlaybackStep(step)
+        setStatusMessage(
+          `Rotacao ${preparedPreset.finalRotation} em execucao (${index + 1}/${preparedPreset.rotationSteps.length}).`,
+        )
+        await sleep(PLAYBACK_STEP_DELAY_MS)
+      }
+
+      if (playbackRunIdRef.current !== runId) {
+        return
+      }
+
+      setRoot(preparedPreset.finalRoot)
+      setSequenceValues(preparedPreset.values)
+      setLastInsertedValue(preparedPreset.values[preparedPreset.values.length - 1] ?? null)
+      setLastRotation(preparedPreset.finalRotation)
+      setLastPivotValue(preparedPreset.finalPivotValue)
+      setStatusMessage(
+        `${preparedPreset.label}: insercoes ${preparedPreset.values.join(' -> ')}. ${buildRotationMessage(
+          preparedPreset.finalRotation,
+          preparedPreset.finalPivotValue,
+        )}`,
+      )
+      appendLog({
+        kind: 'preset',
+        rotation: preparedPreset.finalRotation,
+        message: `Preset executado passo a passo (${preparedPreset.label}). ${preparedPreset.description}`,
+      })
+      clearPreparedScenario()
+    } finally {
+      if (playbackRunIdRef.current === runId) {
+        setIsPlayingPreset(false)
+      }
+    }
+  }
+
   const handleInsert = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    stopPlayback()
+    if (preparedPreset && preparedPreset.rotationSteps.length > 0) {
+      setStatusMessage('Existe uma rotacao pendente. Clique em "Iniciar rotacoes" ou "Fazer tudo de uma vez" antes de inserir outro valor.')
+      return
+    }
+    clearPreparedScenario()
 
     const parsedValue = Number(valueInput)
     if (!Number.isInteger(parsedValue)) {
@@ -93,7 +284,7 @@ export default function AvlStudyLab() {
       return
     }
 
-    const result = insertIntoAvl(root, parsedValue)
+    const result = insertIntoAvlWithPlayback(root, parsedValue)
 
     if (!result.meta.inserted) {
       setStatusMessage(`O valor ${parsedValue} ja existe na arvore. A AVL nao permite duplicatas neste estudo.`)
@@ -105,50 +296,71 @@ export default function AvlStudyLab() {
       return
     }
 
-    setRoot(result.root)
+    const insertStep = result.steps.find((step) => step.stage === 'insert')
+    const preparedRoot = insertStep?.root ?? result.root
+    const rotationSteps = result.steps.filter((step) => step.stage === 'rotation')
+    const nextValues = [...sequenceValues, parsedValue]
+
+    setRoot(preparedRoot)
+    setSequenceValues(nextValues)
     setLastInsertedValue(parsedValue)
-    setLastRotation(result.meta.rotation)
-    setLastPivotValue(result.meta.pivotValue)
+    setLastRotation('none')
+    setLastPivotValue(null)
     setValueInput('')
 
-    const rotationMessage = buildRotationMessage(result.meta.rotation, result.meta.pivotValue)
-    setStatusMessage(`Valor ${parsedValue} inserido. ${rotationMessage}`)
+    if (rotationSteps.length > 0) {
+      setPreparedPreset({
+        presetId: 'manual',
+        label: 'Sequencia manual',
+        description: 'Arvore montada manualmente pelo usuario.',
+        values: nextValues,
+        preparedRoot,
+        finalRoot: result.root,
+        finalRotation: result.meta.rotation,
+        finalPivotValue: result.meta.pivotValue,
+        rotationSteps,
+      })
+      setStatusMessage(`Valor ${parsedValue} inserido. A arvore foi montada; clique em um botao para iniciar a rotacao ${result.meta.rotation}.`)
+    } else {
+      setStatusMessage(`Valor ${parsedValue} inserido. Nenhuma rotacao foi necessaria.`)
+    }
+
     appendLog({
       kind: 'insert',
       rotation: result.meta.rotation,
-      message: `Insercao de ${parsedValue}. ${rotationMessage}`,
+      message: `Insercao de ${parsedValue}. ${buildRotationMessage(result.meta.rotation, result.meta.pivotValue)}`,
     })
   }
 
   const handleLoadPreset = (presetId: string) => {
-    const preset = AVL_PRESETS.find((item) => item.id === presetId)
-
-    if (!preset) {
+    if (!preparedPreset || preparedPreset.presetId !== presetId || isPreparingPreset || isPlayingPreset) {
       return
     }
 
-    const result = buildAvlFromValues(preset.values)
-    const finalMeta = result.metas[result.metas.length - 1]
+    setRoot(preparedPreset.finalRoot)
+    setSequenceValues(preparedPreset.values)
+    setLastInsertedValue(preparedPreset.values[preparedPreset.values.length - 1] ?? null)
+    setLastRotation(preparedPreset.finalRotation)
+    setLastPivotValue(preparedPreset.finalPivotValue)
 
-    setRoot(result.root)
-    setLastInsertedValue(finalMeta?.value ?? null)
-    setLastRotation(finalMeta?.rotation ?? 'none')
-    setLastPivotValue(finalMeta?.pivotValue ?? null)
-
-    const presetMessage = `${preset.label}: insercoes ${preset.values.join(' -> ')}. ${buildRotationMessage(
-      finalMeta?.rotation ?? 'none',
-      finalMeta?.pivotValue ?? null,
+    const presetMessage = `${preparedPreset.label}: insercoes ${preparedPreset.values.join(' -> ')}. ${buildRotationMessage(
+      preparedPreset.finalRotation,
+      preparedPreset.finalPivotValue,
     )}`
     setStatusMessage(presetMessage)
     appendLog({
       kind: 'preset',
-      rotation: finalMeta?.rotation ?? 'none',
-      message: `Preset carregado (${preset.label}). ${preset.description}`,
+      rotation: preparedPreset.finalRotation,
+      message: `Preset finalizado de uma vez (${preparedPreset.label}). ${preparedPreset.description}`,
     })
+    clearPreparedScenario()
   }
 
   const handleReset = () => {
+    stopPlayback()
+    clearPreparedScenario()
     setRoot(null)
+    setSequenceValues([])
     setValueInput('')
     setLastRotation('none')
     setLastInsertedValue(null)
@@ -207,10 +419,12 @@ export default function AvlStudyLab() {
               value={valueInput}
               onChange={(event) => setValueInput(event.target.value)}
               placeholder="Ex.: 42"
+              disabled={isPreparingPreset || isPlayingPreset}
               className="rounded-xl border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-sky-500"
             />
             <button
               type="submit"
+              disabled={isPreparingPreset || isPlayingPreset}
               className="rounded-xl bg-emerald-600 px-5 py-3 font-semibold text-white transition hover:bg-emerald-700"
             >
               Inserir valor
@@ -218,6 +432,7 @@ export default function AvlStudyLab() {
             <button
               type="button"
               onClick={handleReset}
+              disabled={isPreparingPreset || isPlayingPreset}
               className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-100"
             >
               Reiniciar
@@ -229,8 +444,13 @@ export default function AvlStudyLab() {
               <button
                 key={preset.id}
                 type="button"
-                onClick={() => handleLoadPreset(preset.id)}
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-left transition hover:border-sky-300 hover:bg-sky-50"
+                onClick={() => preparePreset(preset.id)}
+                disabled={isPreparingPreset || isPlayingPreset}
+                className={`rounded-xl border px-4 py-4 text-left transition ${
+                  selectedPresetId === preset.id
+                    ? 'border-sky-400 bg-sky-50'
+                    : 'border-slate-200 bg-slate-50 hover:border-sky-300 hover:bg-sky-50'
+                } disabled:cursor-not-allowed disabled:opacity-60`}
               >
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-semibold text-slate-900">{preset.label}</p>
@@ -244,6 +464,29 @@ export default function AvlStudyLab() {
                 </p>
               </button>
             ))}
+          </div>
+
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={runPresetStepByStep}
+              disabled={!preparedPreset || isPreparingPreset || isPlayingPreset}
+              className="rounded-xl bg-sky-600 px-5 py-3 font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isPreparingPreset
+                ? 'Montando arvore...'
+                : isPlayingPreset
+                  ? 'Executando rotacoes...'
+                  : 'Iniciar rotacoes'}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleLoadPreset(selectedPresetId)}
+              disabled={!preparedPreset || isPreparingPreset || isPlayingPreset}
+              className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Fazer tudo de uma vez
+            </button>
           </div>
 
           <div className="relative mt-6 flex min-h-[560px] flex-col justify-center rounded-2xl border border-slate-200 bg-slate-950 p-4">

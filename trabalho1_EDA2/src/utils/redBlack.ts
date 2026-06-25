@@ -24,6 +24,13 @@ export type RbInsertMeta = {
   highlightValues: number[]
 }
 
+export type RbPlaybackStep = {
+  root: RbNode | null
+  value: number
+  meta: RbInsertMeta
+  stage: 'insert' | 'adjust'
+}
+
 export type RbCategory = 'recolor' | 'rotation' | 'double'
 
 export type RbPreset = {
@@ -292,6 +299,173 @@ export function insertIntoRedBlack(root: RbNode | null, value: number) {
   }
 
   return { root: toImmutable(context.root), meta }
+}
+
+function insertNodeWithoutBalancing(node: RbNode | null, value: number, insertedRef: { inserted: boolean }, isRoot: boolean): RbNode {
+  if (!node) {
+    insertedRef.inserted = true
+    return {
+      value,
+      color: isRoot ? 'black' : 'red',
+      left: null,
+      right: null,
+    }
+  }
+
+  if (value === node.value) {
+    return node
+  }
+
+  if (value < node.value) {
+    return {
+      ...node,
+      left: insertNodeWithoutBalancing(node.left, value, insertedRef, false),
+    }
+  }
+
+  return {
+    ...node,
+    right: insertNodeWithoutBalancing(node.right, value, insertedRef, false),
+  }
+}
+
+export function insertIntoRedBlackWithoutBalancing(root: RbNode | null, value: number) {
+  const insertedRef = { inserted: false }
+
+  return {
+    root: insertNodeWithoutBalancing(root, value, insertedRef, root === null),
+    inserted: insertedRef.inserted,
+  }
+}
+
+function cloneMeta(meta: RbInsertMeta): RbInsertMeta {
+  return {
+    inserted: meta.inserted,
+    recolorCount: meta.recolorCount,
+    rotations: [...meta.rotations],
+    rootBlackened: meta.rootBlackened,
+    highlightValues: [...meta.highlightValues],
+  }
+}
+
+export function insertIntoRedBlackWithPlayback(root: RbNode | null, value: number) {
+  const context: RotationContext = { root: toMutable(root, null) }
+  const meta: RbInsertMeta = {
+    inserted: false,
+    recolorCount: 0,
+    rotations: [],
+    rootBlackened: false,
+    highlightValues: [],
+  }
+  const steps: RbPlaybackStep[] = []
+  const pushStep = (stage: RbPlaybackStep['stage']) => {
+    steps.push({
+      root: toImmutable(context.root),
+      value,
+      meta: cloneMeta(meta),
+      stage,
+    })
+  }
+
+  let parent: MutableNode | null = null
+  let current = context.root
+
+  while (current) {
+    parent = current
+    if (value === current.value) {
+      return { root: toImmutable(context.root), meta, steps }
+    }
+    current = value < current.value ? current.left : current.right
+  }
+
+  const inserted: MutableNode = { value, color: 'red', left: null, right: null, parent }
+  meta.inserted = true
+
+  if (!parent) {
+    context.root = inserted
+  } else if (value < parent.value) {
+    parent.left = inserted
+  } else {
+    parent.right = inserted
+  }
+
+  if (parent) {
+    pushStep('insert')
+  }
+
+  let node = inserted
+  while (node.parent && node.parent.color === 'red') {
+    const parentNode = node.parent
+    const grandparent = parentNode.parent
+    if (!grandparent) {
+      break
+    }
+
+    if (parentNode === grandparent.left) {
+      const uncle = grandparent.right
+      if (isRed(uncle)) {
+        parentNode.color = 'black'
+        uncle!.color = 'black'
+        grandparent.color = 'red'
+        meta.recolorCount += 1
+        addHighlights(meta, [parentNode.value, uncle!.value, grandparent.value])
+        node = grandparent
+        pushStep('adjust')
+      } else {
+        if (node === parentNode.right) {
+          node = parentNode
+          rotateLeft(context, node)
+          meta.rotations.push({ direction: 'left', pivotValue: node.value })
+          addHighlights(meta, [node.value])
+          pushStep('adjust')
+        }
+        node.parent!.color = 'black'
+        node.parent!.parent!.color = 'red'
+        const rotationPivot = node.parent!.parent!
+        addHighlights(meta, [node.parent!.value, rotationPivot.value])
+        rotateRight(context, rotationPivot)
+        meta.rotations.push({ direction: 'right', pivotValue: rotationPivot.value })
+        pushStep('adjust')
+      }
+    } else {
+      const uncle = grandparent.left
+      if (isRed(uncle)) {
+        parentNode.color = 'black'
+        uncle!.color = 'black'
+        grandparent.color = 'red'
+        meta.recolorCount += 1
+        addHighlights(meta, [parentNode.value, uncle!.value, grandparent.value])
+        node = grandparent
+        pushStep('adjust')
+      } else {
+        if (node === parentNode.left) {
+          node = parentNode
+          rotateRight(context, node)
+          meta.rotations.push({ direction: 'right', pivotValue: node.value })
+          addHighlights(meta, [node.value])
+          pushStep('adjust')
+        }
+        node.parent!.color = 'black'
+        node.parent!.parent!.color = 'red'
+        const rotationPivot = node.parent!.parent!
+        addHighlights(meta, [node.parent!.value, rotationPivot.value])
+        rotateLeft(context, rotationPivot)
+        meta.rotations.push({ direction: 'left', pivotValue: rotationPivot.value })
+        pushStep('adjust')
+      }
+    }
+  }
+
+  if (context.root && context.root.color === 'red') {
+    context.root.color = 'black'
+    meta.rootBlackened = true
+  }
+
+  if (steps.length === 0 || steps[steps.length - 1].root?.color !== context.root?.color) {
+    pushStep(parent ? 'adjust' : 'insert')
+  }
+
+  return { root: toImmutable(context.root), meta, steps }
 }
 
 export function buildRedBlackFromValues(values: number[]) {

@@ -58,10 +58,15 @@ const ALGORITHMS: SortingAlgorithmInfo[] = [
 ];
 
 const MOCK_DATA_SIZE = 100;
+const INSERTION_STEP_DELAY_MS = 12;
+const SORT_STEP_DELAY_MS = 20;
+
+type VisualizationPhase = 'idle' | 'inserting' | 'sorting';
 
 export default function SortingVisualizer() {
   const [array, setArray] = useState<number[]>([]);
   const [isSorting, setIsSorting] = useState(false);
+  const [visualizationPhase, setVisualizationPhase] = useState<VisualizationPhase>('idle');
   const [selectedAlgorithm, setSelectedAlgorithm] = useState(ALGORITHMS[0].id);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [elapsedTime, setElapsedTime] = useState('0.000');
@@ -120,8 +125,17 @@ export default function SortingVisualizer() {
 
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  const runBubbleSort = async () => {
-    let arr = [...array];
+  const animateArrayInsertion = async (values: number[]) => {
+    setArray([]);
+
+    for (let index = 0; index < values.length; index += 1) {
+      setArray(values.slice(0, index + 1));
+      await sleep(INSERTION_STEP_DELAY_MS);
+    }
+  };
+
+  const runBubbleSort = async (initialArray: number[]) => {
+    let arr = [...initialArray];
     let swaps = 0;
     let comparisons = 0;
     const startTime = performance.now();
@@ -141,7 +155,7 @@ export default function SortingVisualizer() {
           setArray([...arr]);
           playBeep(arr[j], 100);
 
-          await sleep(20);
+          await sleep(SORT_STEP_DELAY_MS);
         }
       }
     }
@@ -150,8 +164,8 @@ export default function SortingVisualizer() {
     setElapsedTime((endTime - startTime).toFixed(3));
   };
 
-  const runInsertionSort = async () => {
-    const arr = [...array];
+  const runInsertionSort = async (initialArray: number[]) => {
+    const arr = [...initialArray];
     let swaps = 0;
     let comparisons = 0;
     const startTime = performance.now();
@@ -175,21 +189,21 @@ export default function SortingVisualizer() {
         playBeep(arr[j], 100);
 
         j--;
-        await sleep(20);
+        await sleep(SORT_STEP_DELAY_MS);
       }
 
       arr[j + 1] = currentValue;
       setArray([...arr]);
       playBeep(currentValue, 100);
-      await sleep(20);
+      await sleep(SORT_STEP_DELAY_MS);
     }
 
     const endTime = performance.now();
     setElapsedTime((endTime - startTime).toFixed(3));
   };
 
-  const runMergeSort = async () => {
-    const arr = [...array];
+  const runMergeSort = async (initialArray: number[]) => {
+    const arr = [...initialArray];
     let swaps = 0;
     let comparisons = 0;
     const startTime = performance.now();
@@ -218,7 +232,7 @@ export default function SortingVisualizer() {
         setSwapCount(swaps);
         setArray([...arr]);
         playBeep(arr[k], 100);
-        await sleep(20);
+        await sleep(SORT_STEP_DELAY_MS);
         k++;
       }
 
@@ -228,7 +242,7 @@ export default function SortingVisualizer() {
         setSwapCount(swaps);
         setArray([...arr]);
         playBeep(arr[k], 100);
-        await sleep(20);
+        await sleep(SORT_STEP_DELAY_MS);
         i++;
         k++;
       }
@@ -239,7 +253,7 @@ export default function SortingVisualizer() {
         setSwapCount(swaps);
         setArray([...arr]);
         playBeep(arr[k], 100);
-        await sleep(20);
+        await sleep(SORT_STEP_DELAY_MS);
         j++;
         k++;
       }
@@ -262,8 +276,8 @@ export default function SortingVisualizer() {
     setElapsedTime((endTime - startTime).toFixed(3));
   };
 
-  const runQuickSort = async () => {
-    const arr = [...array];
+  const runQuickSort = async (initialArray: number[]) => {
+    const arr = [...initialArray];
     let swaps = 0;
     let comparisons = 0;
     const startTime = performance.now();
@@ -280,7 +294,7 @@ export default function SortingVisualizer() {
       setSwapCount(swaps);
       setArray([...arr]);
       playBeep(arr[firstIndex], 100);
-      await sleep(20);
+      await sleep(SORT_STEP_DELAY_MS);
     };
 
     const partition = async (low: number, high: number) => {
@@ -317,8 +331,8 @@ export default function SortingVisualizer() {
     setElapsedTime((endTime - startTime).toFixed(3));
   };
 
-  const runHeapSort = async () => {
-    const arr = [...array];
+  const runHeapSort = async (initialArray: number[]) => {
+    const arr = [...initialArray];
     let swaps = 0;
     let comparisons = 0;
     const startTime = performance.now();
@@ -335,7 +349,7 @@ export default function SortingVisualizer() {
       setSwapCount(swaps);
       setArray([...arr]);
       playBeep(arr[firstIndex], 100);
-      await sleep(20);
+      await sleep(SORT_STEP_DELAY_MS);
     };
 
     const heapify = async (heapSize: number, rootIndex: number): Promise<void> => {
@@ -382,42 +396,51 @@ export default function SortingVisualizer() {
     initAudio();
     if (isSorting) return;
     setIsSorting(true);
+    setVisualizationPhase('inserting');
     setSwapCount(0);
     setComparisonCount(0);
     setElapsedTime('0.000');
 
-    if (selectedAlgorithm === 'bubble') {
-      await runBubbleSort();
-    } else if (selectedAlgorithm === 'insertion') {
-      await runInsertionSort();
-    } else if (selectedAlgorithm === 'quick') {
-      await runQuickSort();
-    } else if (selectedAlgorithm === 'merge') {
-      await runMergeSort();
-    } else if (selectedAlgorithm === 'heap') {
-      await runHeapSort();
-    } else {
-      // Mock provisório para outros algoritmos enquanto não são implementados
-      let swaps = 0;
-      const interval = setInterval(() => {
-        setArray((prev) => {
-          const nextArr = [...prev];
-          const idx1 = Math.floor(Math.random() * prev.length);
-          const idx2 = Math.floor(Math.random() * prev.length);
-          const temp = nextArr[idx1];
-          nextArr[idx1] = nextArr[idx2];
-          nextArr[idx2] = temp;
-          playBeep(nextArr[idx1], 100);
-          return nextArr;
-        });
-        swaps++;
-        setSwapCount(swaps);
-        if (swaps >= 50) clearInterval(interval);
-      }, 50);
-      await sleep(2500); // Espera o tempo do mock terminar
-    }
+    const sourceArray = [...array];
 
-    setIsSorting(false);
+    try {
+      await animateArrayInsertion(sourceArray);
+      setVisualizationPhase('sorting');
+
+      if (selectedAlgorithm === 'bubble') {
+        await runBubbleSort(sourceArray);
+      } else if (selectedAlgorithm === 'insertion') {
+        await runInsertionSort(sourceArray);
+      } else if (selectedAlgorithm === 'quick') {
+        await runQuickSort(sourceArray);
+      } else if (selectedAlgorithm === 'merge') {
+        await runMergeSort(sourceArray);
+      } else if (selectedAlgorithm === 'heap') {
+        await runHeapSort(sourceArray);
+      } else {
+        // Mock provisório para outros algoritmos enquanto não são implementados
+        let swaps = 0;
+        const interval = setInterval(() => {
+          setArray((prev) => {
+            const nextArr = [...prev];
+            const idx1 = Math.floor(Math.random() * prev.length);
+            const idx2 = Math.floor(Math.random() * prev.length);
+            const temp = nextArr[idx1];
+            nextArr[idx1] = nextArr[idx2];
+            nextArr[idx2] = temp;
+            playBeep(nextArr[idx1], 100);
+            return nextArr;
+          });
+          swaps++;
+          setSwapCount(swaps);
+          if (swaps >= 50) clearInterval(interval);
+        }, 50);
+        await sleep(2500); // Espera o tempo do mock terminar
+      }
+    } finally {
+      setVisualizationPhase('idle');
+      setIsSorting(false);
+    }
   };
 
   return (
@@ -475,7 +498,11 @@ export default function SortingVisualizer() {
           disabled={isSorting}
           className="w-full md:w-auto bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-xl font-bold shadow-md transition disabled:opacity-50"
         >
-          {isSorting ? 'Ordenando...' : 'Iniciar Ordenação'}
+          {visualizationPhase === 'inserting'
+            ? 'Inserindo valores...'
+            : visualizationPhase === 'sorting'
+              ? 'Ordenando...'
+              : 'Iniciar Ordenação'}
         </button>
       </div>
 
@@ -508,12 +535,41 @@ export default function SortingVisualizer() {
         );
       })()}
 
+      <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sequência atual</p>
+          <p className="text-xs text-slate-500">
+            {visualizationPhase === 'inserting'
+              ? 'Inserindo valores antes das trocas'
+              : visualizationPhase === 'sorting'
+                ? 'Executando as trocas do algoritmo'
+                : 'Pronto para iniciar'}
+          </p>
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {array.map((value, idx) => (
+            <div
+              key={`cell-${idx}`}
+              className={`min-w-10 rounded-lg border px-2 py-1 text-center text-xs font-semibold transition ${
+                visualizationPhase === 'inserting'
+                  ? 'border-amber-200 bg-amber-50 text-amber-700'
+                  : 'border-slate-200 bg-white text-slate-700'
+              }`}
+            >
+              {value}
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Visualizador */}
       <div className="bg-slate-900 rounded-xl p-4 h-64 flex items-end justify-center gap-[2px] overflow-hidden">
         {array.map((value, idx) => (
           <div
             key={idx}
-            className="bg-sky-500 rounded-t-sm w-full transition-all duration-75"
+            className={`rounded-t-sm w-full transition-all duration-75 ${
+              visualizationPhase === 'inserting' ? 'bg-amber-400' : 'bg-sky-500'
+            }`}
             style={{ height: `${value}%` }}
           ></div>
         ))}

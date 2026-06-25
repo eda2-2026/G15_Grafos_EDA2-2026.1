@@ -1,19 +1,23 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
   RB_PRESETS,
-  buildRedBlackFromValues,
   buildRedBlackLayout,
   countNodes,
   countRedNodes,
   getBlackHeight,
-  insertIntoRedBlack,
+  insertIntoRedBlackWithoutBalancing,
+  insertIntoRedBlackWithPlayback,
   type RbCategory,
   type RbInsertMeta,
   type RbLayoutNode,
   type RbNode,
+  type RbPlaybackStep,
 } from '../utils/redBlack'
 import { useAnimatedTreeLayout } from '../utils/useAnimatedTreeLayout'
+
+const PLAYBACK_STEP_DELAY_MS = 2000
+const PRESET_INSERT_STEP_DELAY_MS = 700
 
 type RbActionKind = 'none' | 'recolor' | 'rotation' | 'recolor-rotation'
 
@@ -22,6 +26,17 @@ type OperationLogEntry = {
   kind: 'insert' | 'preset'
   message: string
   action: RbActionKind
+}
+
+type PreparedRbPreset = {
+  presetId: string
+  label: string
+  description: string
+  values: number[]
+  preparedRoot: RbNode | null
+  finalRoot: RbNode | null
+  finalMeta: RbInsertMeta | null
+  adjustmentSteps: RbPlaybackStep[]
 }
 
 const actionLabel: Record<RbActionKind, string> = {
@@ -99,6 +114,8 @@ function buildActionMessage(meta: RbInsertMeta): string {
 export default function RedBlackStudyLab() {
   const [root, setRoot] = useState<RbNode | null>(null)
   const [valueInput, setValueInput] = useState('')
+  const [sequenceValues, setSequenceValues] = useState<number[]>([])
+  const [selectedPresetId, setSelectedPresetId] = useState<string>(RB_PRESETS[0]?.id ?? '')
   const [statusMessage, setStatusMessage] = useState(
     'Comece inserindo valores ou carregue um dos casos classicos de arvore rubro-negra.',
   )
@@ -106,6 +123,10 @@ export default function RedBlackStudyLab() {
   const [lastInsertedValue, setLastInsertedValue] = useState<number | null>(null)
   const [highlightValues, setHighlightValues] = useState<number[]>([])
   const [operationLog, setOperationLog] = useState<OperationLogEntry[]>([])
+  const [preparedPreset, setPreparedPreset] = useState<PreparedRbPreset | null>(null)
+  const [isPreparingPreset, setIsPreparingPreset] = useState(false)
+  const [isPlayingPreset, setIsPlayingPreset] = useState(false)
+  const playbackRunIdRef = useRef(0)
 
   const totalNodes = useMemo(() => countNodes(root), [root])
   const redNodes = useMemo(() => countRedNodes(root), [root])
@@ -123,8 +144,171 @@ export default function RedBlackStudyLab() {
     ].slice(0, 8))
   }
 
+  useEffect(() => {
+    return () => {
+      playbackRunIdRef.current += 1
+    }
+  }, [])
+
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+  const stopPlayback = () => {
+    playbackRunIdRef.current += 1
+    setIsPreparingPreset(false)
+    setIsPlayingPreset(false)
+  }
+
+  const applyPlaybackStep = (step: RbPlaybackStep) => {
+    setRoot(step.root)
+    setLastInsertedValue(step.value)
+    setLastAction(step.stage === 'adjust' ? getActionKind(step.meta) : 'none')
+    setHighlightValues(step.stage === 'adjust' ? step.meta.highlightValues : [])
+  }
+
+  const clearPreparedScenario = () => {
+    setPreparedPreset(null)
+  }
+
+  const preparePreset = async (presetId: string) => {
+    const preset = RB_PRESETS.find((item) => item.id === presetId)
+
+    if (!preset) {
+      return
+    }
+
+    const runId = playbackRunIdRef.current + 1
+    playbackRunIdRef.current = runId
+    setSelectedPresetId(presetId)
+    clearPreparedScenario()
+    setSequenceValues([])
+    setIsPreparingPreset(true)
+    setRoot(null)
+    setLastAction('none')
+    setLastInsertedValue(null)
+    setHighlightValues([])
+    setStatusMessage(`Preparando ${preset.label}: ${preset.values.join(' -> ')}.`)
+
+    let currentRoot: RbNode | null = null
+    let preparedRoot: RbNode | null = null
+    let finalRoot: RbNode | null = null
+    let finalMeta: RbInsertMeta | null = null
+    let adjustmentSteps: RbPlaybackStep[] = []
+
+    try {
+      for (let index = 0; index < preset.values.length; index += 1) {
+        const value = preset.values[index]
+        const isLastValue = index === preset.values.length - 1
+
+        if (isLastValue) {
+          const result = insertIntoRedBlackWithPlayback(currentRoot, value)
+          const insertStep = result.steps.find((step) => step.stage === 'insert')
+
+          preparedRoot = insertStep?.root ?? result.root
+          finalRoot = result.root
+          finalMeta = result.meta
+          adjustmentSteps = result.steps.filter((step) => step.stage === 'adjust')
+          currentRoot = preparedRoot
+        } else {
+          const result = insertIntoRedBlackWithoutBalancing(currentRoot, value)
+          currentRoot = result.root
+        }
+
+        if (playbackRunIdRef.current !== runId) {
+          return
+        }
+
+        setRoot(currentRoot)
+        setLastInsertedValue(value)
+        setLastAction('none')
+        setHighlightValues([])
+
+        if (isLastValue && adjustmentSteps.length > 0) {
+          setStatusMessage(`Arvore montada com ${preset.values.join(' -> ')}. Clique em um botao para iniciar os ajustes.`)
+        } else {
+          setStatusMessage(`Inserindo ${value} para montar a arvore do caso ${preset.label}.`)
+        }
+
+        await sleep(PRESET_INSERT_STEP_DELAY_MS)
+      }
+
+      if (playbackRunIdRef.current !== runId) {
+        return
+      }
+
+      setSequenceValues(preset.values)
+      setPreparedPreset({
+        presetId,
+        label: preset.label,
+        description: preset.description,
+        values: preset.values,
+        preparedRoot,
+        finalRoot,
+        finalMeta,
+        adjustmentSteps,
+      })
+    } finally {
+      if (playbackRunIdRef.current === runId) {
+        setIsPreparingPreset(false)
+      }
+    }
+  }
+
+  const runPresetStepByStep = async () => {
+    if (!preparedPreset || isPreparingPreset || isPlayingPreset) {
+      return
+    }
+
+    const runId = playbackRunIdRef.current + 1
+    playbackRunIdRef.current = runId
+    setIsPlayingPreset(true)
+
+    try {
+      for (let index = 0; index < preparedPreset.adjustmentSteps.length; index += 1) {
+        if (playbackRunIdRef.current !== runId) {
+          return
+        }
+
+        const step = preparedPreset.adjustmentSteps[index]
+        applyPlaybackStep(step)
+        setStatusMessage(
+          `Ajuste ${index + 1}/${preparedPreset.adjustmentSteps.length}: ${buildActionMessage(step.meta)}`,
+        )
+        await sleep(PLAYBACK_STEP_DELAY_MS)
+      }
+
+      if (playbackRunIdRef.current !== runId) {
+        return
+      }
+
+      setRoot(preparedPreset.finalRoot)
+      setSequenceValues(preparedPreset.values)
+      setLastInsertedValue(preparedPreset.values[preparedPreset.values.length - 1] ?? null)
+      setLastAction(preparedPreset.finalMeta ? getActionKind(preparedPreset.finalMeta) : 'none')
+      setHighlightValues(preparedPreset.finalMeta?.highlightValues ?? [])
+      setStatusMessage(`${preparedPreset.label}: insercoes ${preparedPreset.values.join(' -> ')}. ${
+        preparedPreset.finalMeta ? buildActionMessage(preparedPreset.finalMeta) : ''
+      }`)
+      appendLog({
+        kind: 'preset',
+        action: preparedPreset.finalMeta ? getActionKind(preparedPreset.finalMeta) : 'none',
+        message: `Preset executado passo a passo (${preparedPreset.label}). ${preparedPreset.description}`,
+      })
+      clearPreparedScenario()
+    } finally {
+      if (playbackRunIdRef.current === runId) {
+        setIsPlayingPreset(false)
+      }
+    }
+  }
+
   const handleInsert = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    stopPlayback()
+    if (preparedPreset && preparedPreset.adjustmentSteps.length > 0) {
+      setStatusMessage('Existe um ajuste pendente. Clique em "Iniciar rotacoes" ou "Fazer tudo de uma vez" antes de inserir outro valor.')
+      return
+    }
+    clearPreparedScenario()
 
     const parsedValue = Number(valueInput)
     if (!Number.isInteger(parsedValue)) {
@@ -132,7 +316,7 @@ export default function RedBlackStudyLab() {
       return
     }
 
-    const result = insertIntoRedBlack(root, parsedValue)
+    const result = insertIntoRedBlackWithPlayback(root, parsedValue)
 
     if (!result.meta.inserted) {
       setStatusMessage(`O valor ${parsedValue} ja existe na arvore. Este estudo nao usa duplicatas.`)
@@ -145,15 +329,35 @@ export default function RedBlackStudyLab() {
     }
 
     const actionKind = getActionKind(result.meta)
+    const insertStep = result.steps.find((step) => step.stage === 'insert')
+    const preparedRoot = insertStep?.root ?? result.root
+    const adjustmentSteps = result.steps.filter((step) => step.stage === 'adjust')
     const actionMessage = buildActionMessage(result.meta)
+    const nextValues = [...sequenceValues, parsedValue]
 
-    setRoot(result.root)
+    setRoot(preparedRoot)
+    setSequenceValues(nextValues)
     setLastInsertedValue(parsedValue)
-    setLastAction(actionKind)
-    setHighlightValues(result.meta.highlightValues)
+    setLastAction('none')
+    setHighlightValues([])
     setValueInput('')
 
-    setStatusMessage(`Valor ${parsedValue} inserido. ${actionMessage}`)
+    if (adjustmentSteps.length > 0) {
+      setPreparedPreset({
+        presetId: 'manual',
+        label: 'Sequencia manual',
+        description: 'Arvore montada manualmente pelo usuario.',
+        values: nextValues,
+        preparedRoot,
+        finalRoot: result.root,
+        finalMeta: result.meta,
+        adjustmentSteps,
+      })
+      setStatusMessage(`Valor ${parsedValue} inserido. A arvore foi montada; clique em um botao para iniciar os ajustes.`)
+    } else {
+      setStatusMessage(`Valor ${parsedValue} inserido. ${actionMessage}`)
+    }
+
     appendLog({
       kind: 'insert',
       action: actionKind,
@@ -162,34 +366,35 @@ export default function RedBlackStudyLab() {
   }
 
   const handleLoadPreset = (presetId: string) => {
-    const preset = RB_PRESETS.find((item) => item.id === presetId)
-
-    if (!preset) {
+    if (!preparedPreset || preparedPreset.presetId !== presetId || isPreparingPreset || isPlayingPreset) {
       return
     }
 
-    const result = buildRedBlackFromValues(preset.values)
-    const finalMeta = result.metas[result.metas.length - 1]
-    const actionKind = finalMeta ? getActionKind(finalMeta) : 'none'
+    const actionKind = preparedPreset.finalMeta ? getActionKind(preparedPreset.finalMeta) : 'none'
 
-    setRoot(result.root)
-    setLastInsertedValue(finalMeta?.value ?? null)
+    setRoot(preparedPreset.finalRoot)
+    setSequenceValues(preparedPreset.values)
+    setLastInsertedValue(preparedPreset.values[preparedPreset.values.length - 1] ?? null)
     setLastAction(actionKind)
-    setHighlightValues(finalMeta?.highlightValues ?? [])
+    setHighlightValues(preparedPreset.finalMeta?.highlightValues ?? [])
 
-    const presetMessage = `${preset.label}: insercoes ${preset.values.join(' -> ')}. ${
-      finalMeta ? buildActionMessage(finalMeta) : ''
+    const presetMessage = `${preparedPreset.label}: insercoes ${preparedPreset.values.join(' -> ')}. ${
+      preparedPreset.finalMeta ? buildActionMessage(preparedPreset.finalMeta) : ''
     }`
     setStatusMessage(presetMessage)
     appendLog({
       kind: 'preset',
       action: actionKind,
-      message: `Preset carregado (${preset.label}). ${preset.description}`,
+      message: `Preset finalizado de uma vez (${preparedPreset.label}). ${preparedPreset.description}`,
     })
+    clearPreparedScenario()
   }
 
   const handleReset = () => {
+    stopPlayback()
+    clearPreparedScenario()
     setRoot(null)
+    setSequenceValues([])
     setValueInput('')
     setLastAction('none')
     setLastInsertedValue(null)
@@ -251,10 +456,12 @@ export default function RedBlackStudyLab() {
               value={valueInput}
               onChange={(event) => setValueInput(event.target.value)}
               placeholder="Ex.: 42"
+              disabled={isPreparingPreset || isPlayingPreset}
               className="rounded-xl border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-rose-500"
             />
             <button
               type="submit"
+              disabled={isPreparingPreset || isPlayingPreset}
               className="rounded-xl bg-rose-600 px-5 py-3 font-semibold text-white transition hover:bg-rose-700"
             >
               Inserir valor
@@ -262,6 +469,7 @@ export default function RedBlackStudyLab() {
             <button
               type="button"
               onClick={handleReset}
+              disabled={isPreparingPreset || isPlayingPreset}
               className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-100"
             >
               Reiniciar
@@ -273,8 +481,13 @@ export default function RedBlackStudyLab() {
               <button
                 key={preset.id}
                 type="button"
-                onClick={() => handleLoadPreset(preset.id)}
-                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-left transition hover:border-rose-300 hover:bg-rose-50"
+                onClick={() => preparePreset(preset.id)}
+                disabled={isPreparingPreset || isPlayingPreset}
+                className={`rounded-xl border px-4 py-4 text-left transition ${
+                  selectedPresetId === preset.id
+                    ? 'border-rose-400 bg-rose-50'
+                    : 'border-slate-200 bg-slate-50 hover:border-rose-300 hover:bg-rose-50'
+                } disabled:cursor-not-allowed disabled:opacity-60`}
               >
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-semibold text-slate-900">{preset.label}</p>
@@ -288,6 +501,29 @@ export default function RedBlackStudyLab() {
                 </p>
               </button>
             ))}
+          </div>
+
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={runPresetStepByStep}
+              disabled={!preparedPreset || isPreparingPreset || isPlayingPreset}
+              className="rounded-xl bg-rose-600 px-5 py-3 font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isPreparingPreset
+                ? 'Montando arvore...'
+                : isPlayingPreset
+                  ? 'Executando ajustes...'
+                  : 'Iniciar rotacoes'}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleLoadPreset(selectedPresetId)}
+              disabled={!preparedPreset || isPreparingPreset || isPlayingPreset}
+              className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Fazer tudo de uma vez
+            </button>
           </div>
 
           <div className="relative mt-6 flex min-h-[560px] flex-col justify-center rounded-2xl border border-slate-200 bg-slate-950 p-4">

@@ -8,15 +8,17 @@ import type { BattleRound, ScoreEntry } from './types/search'
 import SortingVisualizer from './components/SortingVisualizer'
 import AvlStudyLab from './components/AvlStudyLab'
 import RedBlackStudyLab from './components/RedBlackStudyLab'
+import GraphStudyLab from './components/GraphStudyLab'
 
 
-type TabId = 'busca' | 'ordenacao' | 'arvores' | 'tags'
+type TabId = 'busca' | 'ordenacao' | 'arvores' | 'grafos' | 'tags'
 type TreeTab = 'avl' | 'rubro-negra'
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'busca', label: 'Busca por tags' },
   { id: 'ordenacao', label: 'Ordenacao' },
   { id: 'arvores', label: 'Arvores' },
+  { id: 'grafos', label: 'Grafos' },
   { id: 'tags', label: 'Cadastro de tags' },
 ]
 
@@ -343,6 +345,8 @@ function App() {
           {activeTree === 'avl' ? <AvlStudyLab /> : <RedBlackStudyLab />}
         </div>
       )}
+
+      {activeTab === 'grafos' && <GraphStudyLab />}
 
       {activeTab === 'tags' && (
       <>

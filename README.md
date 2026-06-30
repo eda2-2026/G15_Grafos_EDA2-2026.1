@@ -42,6 +42,18 @@ Na AVL, o usuario acompanha altura, fator de balanceamento e os quatro casos cla
 
 Na Rubro-Negra, o usuario acompanha cores dos nos, altura preta, recoloracoes e rotacoes usadas para restaurar as propriedades da estrutura.
 
+Algoritmos de grafos presentes no mesmo repositorio:
+- BFS — Busca em Largura
+- DFS — Busca em Profundidade
+- Dijkstra — Menor caminho com pesos
+
+O laboratorio de grafos esta implementado em `trabalho1_EDA2/src/components/GraphStudyLab.tsx`, com reproducao passo a passo da execucao de cada algoritmo, legenda de estados dos nos (nao visitado, fronteira, em foco, visitado) e exibicao das distancias conhecidas no Dijkstra.
+
+Sao oferecidos tres grafos de exemplo:
+- **Rede de cidades (com peso)**: grafo nao direcionado e ponderado, ideal para Dijkstra.
+- **Malha sem peso**: grafo nao direcionado organizado em grade, bom para visualizar camadas do BFS e mergulhos do DFS.
+- **Grafo direcionado**: arestas com sentido e pesos, mostrando como BFS e DFS respeitam a direcao das setas.
+
 ## Screenshots
 
 ![Tela inicial](docs/screenshots/tela-inicial.PNG)
@@ -85,6 +97,7 @@ Passo a passo de uso na interface:
 4. Analise o vencedor, os tempos e o placar.
 5. Acesse a aba "Ordenacao" para visualizar os algoritmos de ordenacao.
 6. Acesse a aba "Arvores" para estudar os laboratorios AVL e Rubro-Negra.
+7. Acesse a aba "Grafos" para estudar BFS, DFS e Dijkstra com animacao passo a passo.
 
 Para executar o benchmark da busca sequencial via CLI:
 

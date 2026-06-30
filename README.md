@@ -2,7 +2,7 @@
 
 Numero da Lista: 1<br>
 Conteudo da Disciplina: Algoritmos de Busca<br>
-URL de apresentação do trabalho: https://www.youtube.com/watch?v=yNFd9T5aB2A<br>
+URL de apresentação do trabalho: https://youtu.be/uLZmrvCeF6U<br>
 
 ## Alunos
 |Matricula | Aluno |
@@ -64,6 +64,10 @@ Sao oferecidos tres grafos de exemplo:
 ### Árvore
 ![Arvore AVL](docs/screenshots/arvore_avl.png)
 ![Arvore Rubro](docs/screenshots/arvore_rubro.png)
+
+### grafo
+![BFS](docs/screenshots/BFS.png)
+![DFS](docs/screenshots/DFS.png)
 
 ## Instalacao
 Linguagem: TypeScript e JavaScript<br>
